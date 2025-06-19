@@ -195,6 +195,8 @@ def train_epoch(model, loader, optimizer, criterion):
     
     return total_loss / len(loader.dataset), total_correct / total_tokens
 
+#print("manko")
+
 
 
 

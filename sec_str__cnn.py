@@ -102,7 +102,7 @@ train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=128)
 
 class SimpleSSPredictor(nn.Module):
-    def __init__(self, num_aa=21, hidden_dim=6, kernel_size=31, dropout=0.05):
+    def __init__(self, num_aa=21, hidden_dim=len(REVERSE_SS_MAP), kernel_size=9, dropout=0.01):
         super().__init__()
         # Embedding layer
         self.embed = nn.Embedding(num_aa, hidden_dim)
@@ -114,10 +114,20 @@ class SimpleSSPredictor(nn.Module):
         
         # Separable convolution layers
         self.conv1 = nn.Sequential(
-            # Depthwise convolution (per-channel)
             nn.Conv1d(hidden_dim, hidden_dim, kernel_size, 
                       padding=kernel_size//2, groups=hidden_dim),
-            # Pointwise convolution (channel mixing)
+            nn.Conv1d(hidden_dim, hidden_dim, 1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
+            nn.Conv1d(hidden_dim, hidden_dim, kernel_size, 
+                      padding=kernel_size//2, groups=hidden_dim),
+            nn.Conv1d(hidden_dim, hidden_dim, 1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
+            nn.Conv1d(hidden_dim, hidden_dim, kernel_size, 
+                      padding=kernel_size//2, groups=hidden_dim),
             nn.Conv1d(hidden_dim, hidden_dim, 1),
             nn.ReLU(),
             nn.Dropout(dropout)

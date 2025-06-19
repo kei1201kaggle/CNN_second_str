@@ -8,6 +8,7 @@ import time
 start_time = time.time()
 
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 SEQ_LENGTH = 256
@@ -92,20 +93,16 @@ class SSDataset(Dataset):
 train_dataset = SSDataset("dssp_train.dat")
 val_dataset = SSDataset("dssp_val.dat")
 
-print(len(train_dataset))
 
-all_ss=np.concatenate(val_dataset.labels)
-n_pad=sum(all_ss==SS_MAP['_'])
-for ss in SS_MAP:
-    if ss=='_': continue
-    fraction=sum(all_ss==SS_MAP[ss])/(len(all_ss)-n_pad)
-    print(f"{ss} {100*fraction:5.1f}%")
+
+
+
 
 train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=128)
 
 class SimpleSSPredictor(nn.Module):
-    def __init__(self, num_aa=21, hidden_dim=4, kernel_size=5, dropout=0.0):
+    def __init__(self, num_aa=21, hidden_dim=6, kernel_size=31, dropout=0.05):
         super().__init__()
         # Embedding layer
         self.embed = nn.Embedding(num_aa, hidden_dim)
@@ -195,29 +192,130 @@ def train_epoch(model, loader, optimizer, criterion):
     
     return total_loss / len(loader.dataset), total_correct / total_tokens
 
-#print("manko")
+def validate(model, loader, criterion):
+    model.eval()
+    total_loss = 0
+    total_correct = 0
+    total_tokens = 0
+    
+    with torch.no_grad():
+        for inputs, labels in loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            
+            outputs = model(inputs)
+            loss = criterion(outputs.permute(0, 2, 1), labels)
+            
+            preds = outputs.argmax(dim=-1)
+            valid_mask = (labels != SS_MAP['_'])
+            correct = (preds[valid_mask] == labels[valid_mask]).sum().item()
+            
+            total_loss += loss.item() * inputs.size(0)
+            total_correct += correct
+            total_tokens += valid_mask.sum().item()
+    
+    avg_loss = total_loss / len(loader.dataset)
+    accuracy = total_correct / total_tokens
+    return avg_loss, accuracy
 
 
+def train_model(model, train_loader, val_loader, optimizer, criterion, 
+                num_epochs=20, model_save_path="ss_model.pth", check_every=1):
+    """
+    Train and validate the model with automatic best-model saving
+    
+    Args:
+        model: Initialized model
+        train_loader: Training DataLoader
+        val_loader: Validation DataLoader
+        optimizer: Initialized optimizer
+        criterion: Loss function
+        num_epochs: Number of training epochs
+        model_save_path: Path to save best model weights
+        check_every: How often (in epochs) we check the model performance
+        
+    Returns:
+        Tuple of (best_model, training_stats) where stats contains:
+        {'train_loss': [...], 'train_acc': [...], 'val_loss': [...], 'val_acc': [...]}
+    """
+    model = model.to(device)
+    best_val_acc = 0.0
+    training_stats = {
+        'train_loss': [],
+        'train_acc': [],
+        'val_loss': [],
+        'val_acc': []
+    }
+    
+    for epoch in range(num_epochs):
+        # Training phase
+        train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion)
+        
+        # Validation phase
+        val_loss, val_acc = validate(model, val_loader, criterion)
+        
+        # Save stats
+        training_stats['train_loss'].append(train_loss)
+        training_stats['train_acc'].append(train_acc)
+        training_stats['val_loss'].append(val_loss)
+        training_stats['val_acc'].append(val_acc)
+
+        if (epoch+1)%check_every==0:
+            # Print progress
+            print(f"Epoch {epoch+1}/{num_epochs} | "
+                  f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2%} | "
+                  f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2%}")
+        
+            # Save best model
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save(model.state_dict(), model_save_path)
+                print(f"Saved new best model with val_acc: {val_acc:.2%}")
+    
+    # Load best model weights before returning
+    model.load_state_dict(torch.load(model_save_path, weights_only=True))
+    return model, training_stats
 
 
+# Run training
+trained_model, stats = train_model(
+    model=model,
+    train_loader=train_loader,
+    val_loader=val_loader,
+    optimizer=optimizer,
+    criterion=criterion,
+    num_epochs=20,
+    model_save_path="best_ss_model.pth",
+    check_every=1
+)
 
+def predict_ss(sequence, model, max_length=SEQ_LENGTH):
+    """Predict secondary structure for any length sequence"""
+    # Preprocess sequence
+    seq = sequence[:max_length]  # Truncate if needed
+    if len(seq) < max_length:
+        seq += '_' * (max_length - len(seq))  # Pad if needed
+    
+    # Convert to tokens
+    token_ids = [VOCAB.get(aa, VOCAB['_']) for aa in seq]
+    input_tensor = torch.tensor([token_ids], dtype=torch.long).to(device)
+    
+    # Predict
+    model.eval()
+    with torch.no_grad():
+        logits = model(input_tensor)
+        preds = logits.argmax(dim=-1).squeeze(0).cpu().numpy()
+    
+    # Convert to SS symbols
+    ss_pred = ''.join(REVERSE_SS_MAP[p] for p in preds)
+    
+    # Remove padding predictions
+    return ss_pred[:len(sequence)]  # Return only the length of original sequence
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+sequence = "MSEEKAVSTEERGSRKVRTGYVVSDKMEKTIVVELEDRVKHPLYGKIIRRTSKVKAHDENGVAGIGDRVQLMETRPLSATKHWRLVEVLEKAK"
+ss_pred = predict_ss(sequence, model)
+print(f"Seq: {sequence}")
+print(f"Pre: {ss_pred}")
+print("Tru: ----------------EEEEEEEEEEETTEEEEEEEEEEE-TTT--EEEEEEEEEEE-SS----TT-EEEEEE-S-SSSSEEEEEEEEEE---")
 
 
 

@@ -102,7 +102,7 @@ train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=128)
 
 class SimpleSSPredictor(nn.Module):
-    def __init__(self, num_aa=21, hidden_dim=2 * len(REVERSE_SS_MAP), kernel_size=9, dropout=0.01):
+    def __init__(self, num_aa=21, hidden_dim=2 * len(REVERSE_SS_MAP), kernel_size=21, dropout=0.01):
         super().__init__()
         # Embedding layer
         self.embed = nn.Embedding(num_aa, hidden_dim)

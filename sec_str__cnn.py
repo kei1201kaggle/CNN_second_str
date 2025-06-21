@@ -115,19 +115,19 @@ class SimpleSSPredictor(nn.Module):
         # Separable convolution layers
         self.conv1 = nn.Sequential(
             nn.Conv1d(hidden_dim, hidden_dim, kernel_size, 
-                      padding=kernel_size//2, groups=hidden_dim),
+                      padding=kernel_size//2, groups=1),
             nn.Conv1d(hidden_dim, hidden_dim, 1),
             nn.ReLU(),
             nn.Dropout(dropout),
             
             nn.Conv1d(hidden_dim, hidden_dim, kernel_size, 
-                      padding=kernel_size//2, groups=hidden_dim),
+                      padding=kernel_size//2, groups=1),
             nn.Conv1d(hidden_dim, hidden_dim, 1),
             nn.ReLU(),
             nn.Dropout(dropout),
             
             nn.Conv1d(hidden_dim, hidden_dim, kernel_size, 
-                      padding=kernel_size//2, groups=hidden_dim),
+                      padding=kernel_size//2, groups=1),
             nn.Conv1d(hidden_dim, hidden_dim, 1),
             nn.ReLU(),
             nn.Dropout(dropout)
@@ -334,6 +334,3 @@ print("Tru: ----------------EEEEEEEEEEETTEEEEEEEEEEE-TTT--EEEEEEEEEEE-SS----TT-E
 end_time = time.time()
 
 print(f"実行時間:{end_time - start_time}sec")
-
-
-

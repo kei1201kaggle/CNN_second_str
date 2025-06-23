@@ -1,41 +1,70 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
 
-# 1. ダミーデータ（2次元の特徴量×100件）を生成
-torch.manual_seed(0)
-X = torch.randn(100, 2)
-y = (X[:, 0] + X[:, 1] > 0).float().reshape(-1, 1)  # ラベル: 0 or 1
 
-# 2. モデル定義
-class LogisticRegression(nn.Module):
+label_map = {'H': 0, 'E': 1, '-': 2}
+
+# データセットクラス
+class SequenceDataset(Dataset):
+    def __init__(self, file_path):
+        self.data = []
+        with open(file_path, 'r') as f:
+            for line in f:
+                parts = line.strip().split()
+                label = label_map[parts[1]]
+                features = list(map(float, parts[2:]))
+                self.data.append((features, label))
+        
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        features, label = self.data[idx]
+        return torch.tensor(features, dtype=torch.float32), torch.tensor(label, dtype=torch.long)
+
+#理論部分
+class LogisticRegressionModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.linear = nn.Linear(2, 1)  # 入力2次元 → 出力1次元（確率）
+        self.linear = nn.Linear(3, 3)
 
     def forward(self, x):
-        return torch.sigmoid(self.linear(x))  # 確率に変換
+        return self.linear(x)
 
-model = LogisticRegression()
+#データ読み込み
+train_dataset = SequenceDataset("nmers_n7_scores_validation.txt")
+test_dataset = SequenceDataset("nmers_n7_scores.txt")
+train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=4)
 
-# 3. 損失関数と最適化手法
-criterion = nn.BCELoss()  # バイナリクロスエントロピー
-optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-# 4. 学習ループ
-for epoch in range(100):
-    y_pred = model(X)                  # 予測
-    loss = criterion(y_pred, y)        # 損失
-    loss.backward()                    # 勾配計算
-    optimizer.step()                   # パラメータ更新
-    optimizer.zero_grad()              # 勾配リセット
+model = LogisticRegressionModel()
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.01)
 
-    if epoch % 10 == 0:
-        print(f"Epoch {epoch}: Loss = {loss.item():.4f}")
+#学習
+for epoch in range(20):
+    model.train()
+    total_loss = 0
+    for x, y in train_loader:
+        optimizer.zero_grad()
+        outputs = model(x)
+        loss = criterion(outputs, y)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    print(f"Epoch {epoch+1}, Loss: {total_loss:.4f}")
 
-# 5. 精度確認（予測値が0.5以上なら1とみなす）
+#テスト精度の確認
+model.eval()
+correct = 0
+total = 0
 with torch.no_grad():
-    y_pred = model(X)
-    predicted = (y_pred > 0.5).float()
-    accuracy = (predicted == y).float().mean()
-    print(f"Accuracy: {accuracy.item():.2%}")
+    for x, y in test_loader:
+        outputs = model(x)
+        _, predicted = torch.max(outputs, 1)
+        correct += (predicted == y).sum().item()
+        total += y.size(0)
+print(f"Test Accuracy: {correct / total:.2%}")
